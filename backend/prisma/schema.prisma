@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tender {
+  id               String    @id @default(cuid())
+  title            String
+  client           String
+  category         String
+  industry         String?
+  location         String?
+  rawText          String
+  deadline         DateTime?
+  submissionMethod String?
+  cpoRequirement   String?
+  estimatedEffort  String?
+  urgencyLevel     String?
+
+  riskLevel        String
+  bidFitScore      Int
+  recommendation   String
+  confidence       String?
+  reasoning        String
+  nextBestAction   String?
+  automationPlan   String?
+
+  status           String    @default("analyzed")
+  calendarEventId  String?
+  calendarLink     String?
+  emailSent        Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  requiredDocuments      TenderDocumentRequirement[]
+  eligibilityCriteria    EligibilityCriterion[]
+  financialRequirements FinancialRequirement[]
+  technicalRequirements TechnicalRequirement[]
+  checklistItems        ChecklistItem[]
+  notificationLogs      NotificationLog[]
+  riskFlags             RiskFlag[]
+  agentActionLogs       AgentActionLog[]
+  companyFit             CompanyFit?
+  missingInformationItems MissingInformation[]
+}
+
+model CompanyFit {
+  id                      String   @id @default(cuid())
+  tenderId                String   @unique
+  tender                  Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  fitExplanation          String
+  matchedServices         String
+  unmatchedRequirements   String
+  createdAt               DateTime @default(now())
+}
+
+model MissingInformation {
+  id          String   @id @default(cuid())
+  tenderId    String
+  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  description String
+  createdAt   DateTime @default(now())
+
+  @@index([tenderId])
+}
+
+model TenderDocumentRequirement {
+  id         String   @id @default(cuid())
+  tenderId   String
+  tender     Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  name       String
+  isRequired Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}
+
+model EligibilityCriterion {
+  id          String   @id @default(cuid())
+  tenderId    String
+  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  description String
+  createdAt   DateTime @default(now())
+}
+
+model FinancialRequirement {
+  id          String   @id @default(cuid())
+  tenderId    String
+  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  description String
+  createdAt   DateTime @default(now())
+}
+
+model TechnicalRequirement {
+  id          String   @id @default(cuid())
+  tenderId    String
+  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  description String
+  createdAt   DateTime @default(now())
+}
+
+model ChecklistItem {
+  id          String    @id @default(cuid())
+  tenderId    String
+  tender      Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  category    String    @default("review")
+  status      String    @default("pending")
+  priority    String    @default("medium")
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model RiskFlag {
+  id          String   @id @default(cuid())
+  tenderId    String
+  tender      Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  title       String
+  severity    String
+  description String
+  createdAt   DateTime @default(now())
+}
+
+model AgentActionLog {
+  id          String   @id @default(cuid())
+  tenderId    String?
+  tender      Tender?  @relation(fields: [tenderId], references: [id], onDelete: SetNull)
+  actionType  String
+  title       String
+  description String?
+  status      String
+  metadata    String?
+  createdAt   DateTime @default(now())
+}
+
+model NotificationLog {
+  id         String   @id @default(cuid())
+  tenderId   String?
+  tender     Tender?  @relation(fields: [tenderId], references: [id], onDelete: SetNull)
+  type       String
+  recipient  String?
+  subject    String?
+  status     String
+  message    String?
+  createdAt  DateTime @default(now())
+}

@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply h-full scroll-smooth;
+  }
+  body {
+    @apply h-full min-h-0;
+  }
+}
+
+/* ****** Keyframes — refresh progress bar ****** */
+@keyframes tp-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.tp-indeterminate-bar {
+  animation: tp-indeterminate 1.25s ease-in-out infinite;
+}

@@ -127,32 +127,71 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Message + nested `cause` (undici / Node fetch often puts TLS/DNS here). */
+function formatGeminiErrorChain(err) {
+  const parts = [];
+  let e = err;
+  let depth = 0;
+  while (e && depth < 6) {
+    const code = e.code ? ` [${e.code}]` : '';
+    parts.push(`${String(e.message || e)}${code}`);
+    e = e.cause;
+    depth += 1;
+  }
+  return parts.join(' | ');
+}
+
 function extractRetryDelayFromMessageMs(err) {
   const m = /retry in ([\d.]+)s/i.exec(String(err.message || err));
   if (m) return Math.min(Math.ceil(parseFloat(m[1], 10) * 1000) + 500, 90000);
   return null;
 }
 
+const NETWORK_GEMINI_ERR_RE =
+  /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|EAI_AGAIN|getaddrinfo|socket hang up|certificate|TLS|SSL|EPROTO/i;
+
 function computeBackoffMs(err, attemptIndex) {
   const explicit = extractRetryDelayFromMessageMs(err);
   if (explicit != null) return explicit;
-  const s = String(err.message || err);
+  const s = formatGeminiErrorChain(err);
   if (/503|high demand|Service Unavailable|overloaded|EAI_AGAIN/i.test(s)) {
     return Math.min(4000 + attemptIndex * 7000, 40000);
+  }
+  if (NETWORK_GEMINI_ERR_RE.test(s)) {
+    return Math.min(2500 + attemptIndex * 5000, 35000);
   }
   return 45_000;
 }
 
+function isNetworkClassGeminiError(err) {
+  return NETWORK_GEMINI_ERR_RE.test(formatGeminiErrorChain(err));
+}
+
 function isRetryableGeminiApiError(err) {
-  const s = String(err.message || err);
+  const s = formatGeminiErrorChain(err);
   return (
     /429|quota|rate limit|Too Many Requests|RESOURCE_EXHAUSTED/i.test(s) ||
-    /503|Service Unavailable|high demand|temporarily unavailable|try again later/i.test(s)
+    /503|Service Unavailable|high demand|temporarily unavailable|try again later/i.test(s) ||
+    NETWORK_GEMINI_ERR_RE.test(s)
   );
 }
 
+/** When GEMINI_RETRY_ON_429 is false we still retry plain network/TLS failures (not quota/rate limits). */
+function isRetryableGeminiUnderPolicy(err) {
+  if (!isRetryableGeminiApiError(err)) return false;
+  if (env.GEMINI_RETRY_ON_429) return true;
+  return isNetworkClassGeminiError(err);
+}
+
 function humanizeGeminiFailure(err) {
-  const raw = String(err.message || err);
+  const raw = formatGeminiErrorChain(err);
+  if (/fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|getaddrinfo|network|certificate|TLS|SSL/i.test(raw)) {
+    return (
+      'Could not reach the Gemini API (network). Check internet/VPN/firewall, try another network, ensure ' +
+      'generativelanguage.googleapis.com is allowed, or on Windows try: NODE_OPTIONS=--dns-result-order=ipv4first. ' +
+      'Details: '
+    ).concat(raw.slice(0, 500));
+  }
   if (/404[^\n]*not found|models\/[\w.-]+ is not found/i.test(raw)) {
     return (
       'This GEMINI_MODEL is not served on the Generative Language API (404). Google has removed many 1.5 aliases; ' +
@@ -187,7 +226,7 @@ function maybeMockAfterFailure(rawText, companyProfile, reason) {
 //****** Gemini — retry on 429 / 503 **************//
 
 async function generateContentWithBackoff(model, prompt) {
-  const maxAttempts = env.GEMINI_RETRY_ON_429 ? 4 : 1;
+  const maxAttempts = env.GEMINI_RETRY_ON_429 ? 4 : 3;
   let lastErr;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
@@ -195,7 +234,7 @@ async function generateContentWithBackoff(model, prompt) {
       return result.response;
     } catch (e) {
       lastErr = e;
-      const canRetry = attempt < maxAttempts - 1 && isRetryableGeminiApiError(e);
+      const canRetry = attempt < maxAttempts - 1 && isRetryableGeminiUnderPolicy(e);
       if (canRetry) {
         const delay = computeBackoffMs(e, attempt);
         console.warn(
@@ -373,7 +412,7 @@ async function analyzeTenderWithGemini(rawText, companyProfile) {
       console.warn('[gemini] Request failed; falling back to mock analysis:', e.message || e);
       return geminiAnalysisSchema.parse(getMockAnalysis(rawText, companyProfile));
     }
-    console.error('[gemini] Live analysis failed:', e.message || e);
+    console.error('[gemini] Live analysis failed:', formatGeminiErrorChain(e));
     throw new Error(humanizeGeminiFailure(e));
   }
 }

@@ -206,10 +206,7 @@ Details: **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)**.
 
 | Document | Purpose |
 | -------- | ------- |
-| [SOLUTION_DESIGN.md](./SOLUTION_DESIGN.md) | Assignment-style solution / functional design |
-| [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) | REST API reference |
-| [DEMO_SCRIPT.md](./DEMO_SCRIPT.md) | Video / live demo script |
-| [TEST_CHECKLIST.md](./TEST_CHECKLIST.md) | Pre-flight verification |
-| [SUBMISSION_NOTES.md](./SUBMISSION_NOTES.md) | Submission checklist + email template |
+| [docs/SOLUTION_DESIGN.md](./SOLUTION_DESIGN.md) | Assignment-style solution / functional design |
+| [docs/API_DOCUMENTATION.md](./API_DOCUMENTATION.md) | REST API reference |
 | [backend/README.md](./backend/README.md) | Backend setup and troubleshooting |
 | [frontend/README.md](./frontend/README.md) | Frontend setup and pages |

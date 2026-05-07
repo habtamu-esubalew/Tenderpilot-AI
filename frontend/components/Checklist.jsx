@@ -14,6 +14,7 @@ const priorityDot = {
 
 const categoryStyle = {
   review: 'bg-slate-100 text-slate-700',
+  eligibility: 'bg-violet-50 text-violet-900',
   compliance: 'bg-indigo-50 text-indigo-800',
   production: 'bg-emerald-50 text-emerald-900',
   logistics: 'bg-sky-50 text-sky-900',

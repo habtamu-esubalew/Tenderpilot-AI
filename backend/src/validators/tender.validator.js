@@ -39,6 +39,7 @@ const checklistCategorySchema = z.enum([
   'document',
   'financial',
   'technical',
+  'eligibility',
   'submission',
   'review',
   'communication',

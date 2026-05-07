@@ -86,7 +86,7 @@ const REQUIRED_SCHEMA_BLOCK = `{
         "title": "string",
         "description": "string",
         "priority": "low | medium | high",
-        "category": "document | financial | technical | submission | review | communication",
+        "category": "document | financial | technical | eligibility | submission | review | communication",
         "dueDate": "ISO date string or null"
       }
     ]
@@ -142,9 +142,24 @@ function formatGeminiErrorChain(err) {
 }
 
 function extractRetryDelayFromMessageMs(err) {
-  const m = /retry in ([\d.]+)s/i.exec(String(err.message || err));
-  if (m) return Math.min(Math.ceil(parseFloat(m[1], 10) * 1000) + 500, 90000);
+  const s = formatGeminiErrorChain(err);
+
+  let m = /(?:please\s+)?retry in ([\d.]+)\s*s/i.exec(s);
+  if (m) return Math.min(Math.ceil(parseFloat(m[1]) * 1000) + 750, 120000);
+
+  m = /"retryDelay"\s*:\s*"(\d+)s"/i.exec(s);
+  if (m) return Math.min((parseInt(m[1], 10) || 60) * 1000 + 750, 120000);
+
   return null;
+}
+
+/** Gemini free-tier *daily* quota (repeated 429s after ~minute waits won't help). */
+function isGeminiDailyFreeTierQuota429(err) {
+  const s = formatGeminiErrorChain(err);
+  if (!/429|quota exceeded/i.test(s)) return false;
+  return /GenerateRequestsPerDay|PerDayPerProjectPerModel-FreeTier|daily.*quota|limit:\s*20.*free/i.test(
+    s,
+  );
 }
 
 const NETWORK_GEMINI_ERR_RE =
@@ -179,6 +194,7 @@ function isRetryableGeminiApiError(err) {
 /** When GEMINI_RETRY_ON_429 is false we still retry plain network/TLS failures (not quota/rate limits). */
 function isRetryableGeminiUnderPolicy(err) {
   if (!isRetryableGeminiApiError(err)) return false;
+  if (isGeminiDailyFreeTierQuota429(err)) return false;
   if (env.GEMINI_RETRY_ON_429) return true;
   return isNetworkClassGeminiError(err);
 }
@@ -200,10 +216,19 @@ function humanizeGeminiFailure(err) {
     ).concat(raw.slice(0, 400));
   }
   if (/429|quota|limit:\s*0/i.test(raw)) {
+    if (isGeminiDailyFreeTierQuota429(err)) {
+      return (
+        'Gemini free-tier daily quota is exhausted for this model (often 20 generate requests/day on the free tier; ' +
+        'your error references per-day caps). Waiting a few seconds will not reset it until the next quota window — ' +
+        'enable billing / a paid Gemini plan in Google AI Studio or Google Cloud for this project, use a fresh API key ' +
+        'from a project that still has quota, try again tomorrow, or set GEMINI_SILENT_FALLBACK=true for deterministic ' +
+        'mock analysis during development. Limits: https://ai.google.dev/gemini-api/docs/rate-limits Details: '
+      ).concat(raw.slice(0, 450));
+    }
     return (
-      'Gemini returned HTTP 429 or zero quota for this model. Fix: enable Generative Language API for your Google Cloud ' +
-      'project, attach billing if required, or try another model your tier allows (see ' +
-      'https://ai.google.dev/gemini-api/docs/rate-limits). Details: '
+      'Gemini returned HTTP 429 (rate limit or quota). If you are not on daily free-tier caps: wait and retry — the ' +
+      'server respects Retry-After style delays when present. Otherwise enable billing or a tier with higher limits. ' +
+      'See https://ai.google.dev/gemini-api/docs/rate-limits — Details: '
     ).concat(raw.slice(0, 400));
   }
   if (/503|high demand|Service Unavailable/i.test(raw)) {

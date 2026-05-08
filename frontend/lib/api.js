@@ -15,7 +15,8 @@ const client = axios.create({
 export function extractApiErrorMessage(error, fallback = 'Something went wrong') {
   if (axios.isAxiosError(error)) {
     if (error.code === 'ECONNABORTED') {
-      return 'Request timed out. Check that the API server is running and reachable.';
+      const base = getApiBaseUrl();
+      return `Request timed out before the server finished (${base}). If you were analyzing a tender, Gemini can take a minute—try again or increase the analyze timeout. Otherwise open ${base}/health in your browser and confirm NEXT_PUBLIC_API_BASE_URL matches where the API runs.`;
     }
     if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
       return 'Could not reach the API. Is the backend running and NEXT_PUBLIC_API_BASE_URL correct?';
@@ -37,8 +38,11 @@ function unwrapSuccess(response) {
   throw new Error(body?.message || 'Unexpected API response');
 }
 
+// Tender analyze calls Gemini — allow longer than default client timeout.
 export function analyzeTender(payload) {
-  return client.post('/api/tenders/analyze', payload).then(unwrapSuccess);
+  return client
+    .post('/api/tenders/analyze', payload, { timeout: 120_000 })
+    .then(unwrapSuccess);
 }
 
 export function getTenders(filters = {}) {

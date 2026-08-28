@@ -1,96 +1,36 @@
 const cron = require('node-cron');
 const { env } = require('../config/env');
-const { prisma } = require('../config/prisma');
-const { startOfDay, endOfDay, addDays } = require('../utils/dateUtils');
-const { sendTenderEmail, buildTenderSummaryEmail } = require('./email.service');
+const { processDeadlineReminders } = require('./deadlineReminder.service');
 
-//****** Cron — deadline reminders (today … +2 days) **************//
-
-async function findTendersDueSoon() {
-  const now = new Date();
-  const from = startOfDay(now);
-  const to = endOfDay(addDays(now, 2));
-
-  return prisma.tender.findMany({
-    where: {
-      deadline: {
-        gte: from,
-        lte: to,
-      },
-    },
-    include: {
-      requiredDocuments: true,
-      eligibilityCriteria: true,
-      financialRequirements: true,
-      technicalRequirements: true,
-      checklistItems: true,
-      riskFlags: true,
-      companyFit: true,
-      missingInformationItems: true,
-    },
-    orderBy: { deadline: 'asc' },
-  });
-}
+//****** Cron — daily deadline reminders at 09:00 **************//
 
 async function runDeadlineReminders() {
   if (!env.ENABLE_REMINDERS) {
     return { ran: false, reason: 'reminders_disabled' };
   }
 
-  const recipient = env.DEFAULT_NOTIFICATION_EMAIL;
-  if (!recipient) {
+  if (!env.DEFAULT_NOTIFICATION_EMAIL?.trim()) {
     console.warn('[reminder] DEFAULT_NOTIFICATION_EMAIL not set; skipping send.');
     return { ran: true, sent: 0, skippedNoRecipient: true };
   }
 
-  const tenders = await findTendersDueSoon();
-  let sent = 0;
+  const result = await processDeadlineReminders({
+    trigger: 'cron',
+    writeAgentLogs: true,
+  });
 
-  for (const tender of tenders) {
-    try {
-      const { subject: baseSubject } = buildTenderSummaryEmail(tender);
-      const reminderSubject = `Reminder: deadline soon — ${baseSubject}`;
-      const result = await sendTenderEmail({
-        to: recipient,
-        tender,
-        subjectOverride: reminderSubject,
-      });
-      const status = result.status;
-
-      await prisma.notificationLog.create({
-        data: {
-          tenderId: tender.id,
-          type: 'deadline_reminder',
-          recipient,
-          subject: reminderSubject,
-          status,
-          message:
-            status === 'mock_sent'
-              ? result.message || 'Mock reminder'
-              : 'Reminder dispatched',
-        },
-      });
-      sent += 1;
-    } catch (e) {
-      console.error('[reminder] failed for tender', tender.id, e);
-      await prisma.notificationLog.create({
-        data: {
-          tenderId: tender.id,
-          type: 'deadline_reminder',
-          recipient,
-          subject: `Reminder failed — ${tender.title}`,
-          status: 'failed',
-          message: e.message || 'Unknown error',
-        },
-      });
-    }
+  if (result.checkedTenders) {
+    console.log(
+      `[reminder] Processed ${result.checkedTenders} upcoming deadline(s), sent: ${result.remindersGenerated}, skipped: ${result.remindersSkipped}`,
+    );
   }
 
-  if (tenders.length) {
-    console.log(`[reminder] Processed ${tenders.length} upcoming deadline(s), attempts: ${sent}`);
-  }
-
-  return { ran: true, tenderCount: tenders.length, attempts: sent };
+  return {
+    ran: true,
+    tenderCount: result.checkedTenders,
+    attempts: result.remindersGenerated,
+    skipped: result.remindersSkipped,
+  };
 }
 
 function scheduleDailyReminders() {
@@ -114,5 +54,4 @@ function scheduleDailyReminders() {
 module.exports = {
   scheduleDailyReminders,
   runDeadlineReminders,
-  findTendersDueSoon,
 };

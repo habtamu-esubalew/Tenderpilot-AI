@@ -432,6 +432,23 @@ async function addCalendarForTender(tenderId) {
     throw new AppError('Tender not found', 404);
   }
 
+  if (tender.calendarEventId) {
+    const isTemplate = tender.calendarEventId === TEMPLATE_EVENT_ID_MARKER;
+    const existingLink = tender.calendarLink || null;
+
+    return {
+      alreadyExists: true,
+      mode: isTemplate ? 'fallback' : 'api',
+      message: 'Calendar reminder already exists for this tender.',
+      calendarLink: existingLink,
+      link: existingLink,
+      persisted: {
+        calendarEventId: tender.calendarEventId,
+        calendarLink: existingLink,
+      },
+    };
+  }
+
   const result = await createDeadlineEvent(tender);
 
   const persistedEventId =
@@ -472,6 +489,9 @@ async function addCalendarForTender(tenderId) {
   return {
     warning: result.warning,
     message: result.message,
+    mode: result.mode,
+    calendarLink: result.calendarLink,
+    link: result.calendarLink,
     persisted: {
       calendarEventId: persistedEventId,
       calendarLink: result.calendarLink,

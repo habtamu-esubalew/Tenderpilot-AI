@@ -27,9 +27,11 @@ export function AutomationPanel({ tenderId, hasDeadline, onAfterAction }) {
     setCalendarUrl(null);
     try {
       const result = await createCalendarReminder(tenderId);
-      const url = result?.calendarLink || result?.link;
+      const url = result?.calendarLink || result?.link || result?.persisted?.calendarLink;
       if (url) setCalendarUrl(url);
-      if (result?.warning) {
+      if (result?.alreadyExists) {
+        showToast(result.message || 'Calendar reminder already exists for this tender.', 'info');
+      } else if (result?.warning) {
         showToast(result.warning, 'info');
       } else if (result?.mode === 'fallback') {
         showToast(
@@ -85,7 +87,7 @@ export function AutomationPanel({ tenderId, hasDeadline, onAfterAction }) {
       const data = await runDeadlineCheck();
       setDeadlineSummary(data);
       showToast(
-        `Deadline check finished: looked at ${data?.checkedTenders ?? 0} tender(s), handled ${data?.remindersGenerated ?? 0} reminder(s).`,
+        `Deadline check finished: looked at ${data?.checkedTenders ?? 0} tender(s), sent ${data?.remindersGenerated ?? 0} reminder(s)${data?.remindersSkipped ? `, skipped ${data.remindersSkipped} (already sent today)` : ''}.`,
         'success',
       );
       onAfterAction?.();
@@ -215,7 +217,13 @@ export function AutomationPanel({ tenderId, hasDeadline, onAfterAction }) {
           {deadlineSummary && (
             <p className="mt-3 text-xs leading-relaxed text-slate-700">
               <strong>{deadlineSummary.checkedTenders}</strong> tender(s) checked ·{' '}
-              <strong>{deadlineSummary.remindersGenerated}</strong> reminder(s)
+              <strong>{deadlineSummary.remindersGenerated}</strong> reminder(s) sent
+              {deadlineSummary.remindersSkipped > 0 && (
+                <>
+                  {' '}
+                  · <strong>{deadlineSummary.remindersSkipped}</strong> skipped (already sent today)
+                </>
+              )}
             </p>
           )}
         </div>

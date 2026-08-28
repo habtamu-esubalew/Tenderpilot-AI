@@ -77,7 +77,7 @@ export default function DashboardPage() {
     try {
       const data = await runDeadlineCheck();
       showToast(
-        `Deadline check finished: looked at ${data?.checkedTenders ?? 0} tender(s), handled ${data?.remindersGenerated ?? 0} reminder(s).`,
+        `Deadline check finished: looked at ${data?.checkedTenders ?? 0} tender(s), sent ${data?.remindersGenerated ?? 0} reminder(s)${data?.remindersSkipped ? `, skipped ${data.remindersSkipped} (already sent today)` : ''}.`,
         'success',
       );
       await load({ silent: true });
